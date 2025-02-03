@@ -13,7 +13,7 @@ on:
 permissions:
   contents: read
 
-concurrency: 
+concurrency:
   group: lint-twig-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
@@ -24,19 +24,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up php ${{ matrix.php-versions }}
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.3
           extensions: apcu
           coverage: none
 
       - name: twig lint
         run: |
           cd php
-          composer require sserbin/twig-linter:@dev --no-progress --dev
           composer install
-          chmod +x ./vendor/bin/twig-linter
-          ./vendor/bin/twig-linter lint ./templates
+          composer run lint:twig

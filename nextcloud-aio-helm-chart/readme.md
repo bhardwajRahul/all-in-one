@@ -1,5 +1,8 @@
 # Nextcloud AIO Helm-chart
 
+> [!NOTE]
+> For an enterprise-ready and scalable deployment method based on Helm Charts (also available for Podman), please [contact Nextcloud GmbH](https://nextcloud.com/enterprise/).
+
 You can run the containers that are build for AIO with Kubernetes using this Helm chart. This comes with a few downsides, that are discussed below.
 
 ### Advantages
@@ -10,6 +13,7 @@ You can run the containers that are build for AIO with Kubernetes using this Hel
 - You lose the AIO interface
 - You lose update notifications and automatic updates
 - You lose all AIO backup and restore features
+- You lose all community containers: https://github.com/nextcloud/all-in-one/tree/main/community-containers#community-containers
 - **You need to know what you are doing**
 - For updating, you need to strictly follow the at the bottom described update routine
 - You need to monitor yourself if the volumes have enough free space and increase them if they don't by adjusting their size in values.yaml
@@ -17,13 +21,14 @@ You can run the containers that are build for AIO with Kubernetes using this Hel
 
 ## How to use this?
 
-First download this file: https://raw.githubusercontent.com/nextcloud/all-in-one/main/nextcloud-aio-helm-chart/values.yaml and adjust at least all values marked with `# TODO!`
+First download this file: https://raw.githubusercontent.com/nextcloud/all-in-one/main/nextcloud-aio-helm-chart/values.yaml and adjust at least all values marked with `# TODO!`<br>
+⚠️ **Warning**: Do not use the symbols `@` and `:` in your passwords. These symbols are used to build database connection strings. You will experience issues when using these symbols!
 
 Then run:
 
 ```
 helm repo add nextcloud-aio https://nextcloud.github.io/all-in-one/
-helm install my-release nextcloud-aio/nextcloud-aio-helm-chart -f values.yaml
+helm install nextcloud-aio nextcloud-aio/nextcloud-aio-helm-chart -f values.yaml
 ```
 
 And after a while, everything should be set up.

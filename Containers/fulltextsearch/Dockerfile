@@ -1,19 +1,24 @@
+# syntax=docker/dockerfile:latest
 # Probably from here https://github.com/elastic/elasticsearch/blob/main/distribution/docker/src/docker/Dockerfile
-FROM elasticsearch:8.9.1
+FROM elasticsearch:8.17.1
 
 USER root
 
+ARG DEBIAN_FRONTEND=noninteractive
+
+# hadolint ignore=DL3008
 RUN set -ex; \
     \
-    export DEBIAN_FRONTEND=noninteractive; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
         tzdata \
     ; \
-    rm -rf /var/lib/apt/lists/*; \
-    elasticsearch-plugin install --batch ingest-attachment
+    rm -rf /var/lib/apt/lists/*;
+
+COPY --chmod=775 healthcheck.sh /healthcheck.sh
 
 USER 1000:0
 
-HEALTHCHECK CMD nc -z localhost 9200 || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=1m --retries=5 CMD /healthcheck.sh
 LABEL com.centurylinklabs.watchtower.enable="false"

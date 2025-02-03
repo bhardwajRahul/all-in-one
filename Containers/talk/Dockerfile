@@ -1,9 +1,10 @@
-FROM nats:2.9.21-scratch as nats
-FROM eturnal/eturnal:1.11.1 AS eturnal
-FROM strukturag/nextcloud-spreed-signaling:1.1.3 as signaling
-FROM alpine:3.18.3 as janus
+# syntax=docker/dockerfile:latest
+FROM nats:2.10.25-scratch AS nats
+FROM eturnal/eturnal:1.12.1 AS eturnal
+FROM strukturag/nextcloud-spreed-signaling:2.0.2 AS signaling
+FROM alpine:3.21.2 AS janus
 
-ARG JANUS_VERSION=v0.14.0
+ARG JANUS_VERSION=v1.3.0
 WORKDIR /src
 RUN set -ex; \
     apk add --no-cache \
@@ -33,18 +34,19 @@ RUN set -ex; \
     make configs; \
     rename -v ".jcfg.sample" ".jcfg" /usr/local/etc/janus/*.jcfg.sample
 
-FROM alpine:3.18.2
+FROM alpine:3.21.2
 ENV ETURNAL_ETC_DIR="/conf"
-COPY --from=janus     /usr/local                          /usr/local
-COPY --from=eturnal   /opt/eturnal                        /opt/eturnal
-COPY --from=nats      /nats-server                        /usr/local/bin/nats-server
-COPY --from=signaling /usr/bin/nextcloud-spreed-signaling /usr/local/bin/nextcloud-spreed-signaling
+COPY --from=janus     --chmod=777 --chown=1000:1000 /usr/local                          /usr/local
+COPY --from=eturnal   --chmod=777 --chown=1000:1000 /opt/eturnal                        /opt/eturnal
+COPY --from=nats      --chmod=777 --chown=1000:1000 /nats-server                        /usr/local/bin/nats-server
+COPY --from=signaling --chmod=777 --chown=1000:1000 /usr/bin/nextcloud-spreed-signaling /usr/local/bin/nextcloud-spreed-signaling
 
 COPY --chmod=775 start.sh /start.sh
 COPY --chmod=775 healthcheck.sh /healthcheck.sh
 COPY --chmod=664 supervisord.conf /supervisord.conf
 
 RUN set -ex; \
+    apk upgrade --no-cache -a; \
     apk add --no-cache \
         ca-certificates \
         tzdata \
@@ -65,8 +67,9 @@ RUN set -ex; \
         libusrsctp \
         libwebsockets \
         \
-        shadow; \
-    useradd --system eturnal; \
+        shadow \
+        grep; \
+    useradd --system -u 1000 eturnal; \
     apk del --no-cache \
         shadow; \
     \
@@ -85,21 +88,18 @@ RUN set -ex; \
         /var/run/supervisord \
         /usr/local/lib/janus/loggers; \
     chown eturnal:eturnal -R \
-        /usr \
-        /opt/eturnal \
         /etc/nats.conf \
         /var/log/supervisord \
         /var/run/supervisord; \
     chmod 777 -R \
         /tmp \
         /conf \
-        /opt/eturnal \
         /var/run/supervisord \
         /var/log/supervisord; \
     ln -s /opt/eturnal/bin/stun /usr/local/bin/stun; \
     ln -s /opt/eturnal/bin/eturnalctl /usr/local/bin/eturnalctl
 
-USER eturnal
+USER 1000
 ENTRYPOINT ["/start.sh"]
 CMD ["supervisord", "-c", "/supervisord.conf"]
 

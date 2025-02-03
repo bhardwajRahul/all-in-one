@@ -1,11 +1,12 @@
+# syntax=docker/dockerfile:latest
 # Docker CLI is a requirement
-FROM docker:24.0.5-cli as docker
+FROM docker:27.5.1-cli AS docker
 
 # Caddy is a requirement
-FROM caddy:2.7.4-alpine as caddy
+FROM caddy:2.9.1-alpine AS caddy
 
-# From https://github.com/docker-library/php/blob/master/8.2/alpine3.18/fpm/Dockerfile
-FROM php:8.2.9-fpm-alpine3.18
+# From https://github.com/docker-library/php/blob/master/8.3/alpine3.21/fpm/Dockerfile
+FROM php:8.3.16-fpm-alpine3.21
 
 EXPOSE 80
 EXPOSE 8080
@@ -16,10 +17,10 @@ COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 
 WORKDIR /var/www/docker-aio
 
+# hadolint ignore=SC2086,DL3047,DL3003,DL3004
 RUN set -ex; \
+    apk upgrade --no-cache -a; \
     apk add --no-cache shadow; \
-    groupmod -g 333 xfs; \
-    usermod -u 333 -g 333 xfs; \
     groupmod -g 33 www-data; \
     usermod -u 33 -g 33 www-data; \
     \
@@ -41,7 +42,7 @@ RUN set -ex; \
     apk add --no-cache --virtual .build-deps \
         autoconf \
         build-base; \
-    pecl install APCu-5.1.22; \
+    pecl install APCu-5.1.24; \
     docker-php-ext-enable apcu; \
     rm -r /tmp/pear; \
     runDeps="$( \
@@ -50,19 +51,21 @@ RUN set -ex; \
             | sort -u \
             | awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
     )"; \
-    apk add --virtual .nextcloud-aio-rundeps $runDeps; \
+    apk add --no-cache --virtual .nextcloud-aio-rundeps $runDeps; \
     apk del .build-deps; \
     grep -q '^pm = dynamic' /usr/local/etc/php-fpm.d/www.conf; \
     sed -i 's/^pm = dynamic/pm = ondemand/' /usr/local/etc/php-fpm.d/www.conf; \
     sed -i 's/^pm.max_children =.*/pm.max_children = 80/' /usr/local/etc/php-fpm.d/www.conf; \
     sed -i 's|access.log = /proc/self/fd/2|access.log = /proc/self/fd/1|' /usr/local/etc/php-fpm.d/docker.conf; \
+    grep -q ';listen.allowed_clients' /usr/local/etc/php-fpm.d/www.conf; \
+    sed -i 's|;listen.allowed_clients.*|listen.allowed_clients = 127.0.0.1,::1|' /usr/local/etc/php-fpm.d/www.conf; \
     \
     apk add --no-cache git; \
     wget https://getcomposer.org/installer -O - | php -- --install-dir=/usr/local/bin --filename=composer; \
     chmod +x /usr/local/bin/composer; \
     cd /var/www/docker-aio; \
     git clone https://github.com/nextcloud-releases/all-in-one.git --depth 1 .; \
-    find ./ -maxdepth 1 -mindepth 1 -not -path ./php -exec rm -r {} \; ; \
+    find ./ -maxdepth 1 -mindepth 1 -not -path ./php -not -path ./community-containers -exec rm -r {} \; ; \
     chown www-data:www-data -R /var/www/docker-aio; \
     cd php; \
     sudo -u www-data composer install --no-dev; \
@@ -118,6 +121,7 @@ COPY --chmod=664 Caddyfile /Caddyfile
 COPY --chmod=664 supervisord.conf /supervisord.conf
 COPY mastercontainer.conf /etc/apache2/sites-available/mastercontainer.conf
 
+# hadolint ignore=DL3002
 USER root
 
 ENTRYPOINT ["/start.sh"]

@@ -7,6 +7,9 @@ ini_set('memory_limit', '2048M');
 // set max execution time to 2h just in case of a very slow internet connection
 ini_set('max_execution_time', '7200');
 
+// Log whole log messages
+ini_set('log_errors_max_len', '0');
+
 use DI\Container;
 use Slim\Csrf\Guard;
 use Slim\Factory\AppFactory;
@@ -83,6 +86,8 @@ $app->get('/containers', function (Request $request, Response $response, array $
         'domain' => $configurationManager->GetDomain(),
         'apache_port' => $configurationManager->GetApachePort(),
         'borg_backup_host_location' => $configurationManager->GetBorgBackupHostLocation(),
+        'borg_remote_repo' => $configurationManager->GetBorgRemoteRepo(),
+        'borg_public_key' => $configurationManager->GetBorgPublicKey(),
         'nextcloud_password' => $configurationManager->GetAndGenerateSecret('NEXTCLOUD_PASSWORD'),
         'containers' => (new \AIO\ContainerDefinitionFetcher($container->get(\AIO\Data\ConfigurationManager::class), $container))->FetchDefinition(),
         'borgbackup_password' => $configurationManager->GetAndGenerateSecret('BORGBACKUP_PASSWORD'),
@@ -120,8 +125,10 @@ $app->get('/containers', function (Request $request, Response $response, array $
         'nextcloud_max_time' => $configurationManager->GetNextcloudMaxTime(),
         'nextcloud_memory_limit' => $configurationManager->GetNextcloudMemoryLimit(),
         'is_dri_device_enabled' => $configurationManager->isDriDeviceEnabled(),
+        'is_nvidia_gpu_enabled' => $configurationManager->isNvidiaGpuEnabled(),
         'is_talk_recording_enabled' => $configurationManager->isTalkRecordingEnabled(),
         'is_docker_socket_proxy_enabled' => $configurationManager->isDockerSocketProxyEnabled(),
+        'is_whiteboard_enabled' => $configurationManager->isWhiteboardEnabled(),        
     ]);
 })->setName('profile');
 $app->get('/login', function (Request $request, Response $response, array $args) use ($container) {

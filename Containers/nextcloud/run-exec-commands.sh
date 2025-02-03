@@ -1,9 +1,10 @@
 #!/bin/bash
 
-while ! nc -z "$NC_DOMAIN" 443; do
-    sleep 5
+# Wait until the apache container is ready
+while ! nc -z "$APACHE_HOST" "$APACHE_PORT"; do
+    echo "Waiting for Apache to become available..."
+    sleep 15
 done
-sleep 10
 
 if [ -n "$NEXTCLOUD_EXEC_COMMANDS" ]; then
     echo "#!/bin/bash" > /tmp/nextcloud-exec-commands

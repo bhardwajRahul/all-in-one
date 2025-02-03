@@ -3,12 +3,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    kompose.cmd: kompose convert -c -f latest.yml --namespace {{ .Values.NAMESPACE }}
-    kompose.version: 1.30.0 (9d8dcb518)
+    kompose.version: 1.35.0 (9532ceef3)
   labels:
     io.kompose.service: nextcloud-aio-talk
   name: nextcloud-aio-talk
-  namespace: {{ .Values.NAMESPACE }}
+  namespace: "{{ .Values.NAMESPACE }}"
 spec:
   replicas: 1
   selector:
@@ -17,82 +16,72 @@ spec:
   template:
     metadata:
       annotations:
-        kompose.cmd: kompose convert -c -f latest.yml --namespace {{ .Values.NAMESPACE }}
-        kompose.version: 1.30.0 (9d8dcb518)
+        kompose.version: 1.35.0 (9532ceef3)
       labels:
-        io.kompose.network/nextcloud-aio: "true"
         io.kompose.service: nextcloud-aio-talk
     spec:
-      initContainers:
-        - name: init-volumes
-          image: alpine
-          command:
-            - chmod
-            - "777"
-            - /nextcloud-aio-talk-tmpfs0
-            - /nextcloud-aio-talk-tmpfs1
-            - /nextcloud-aio-talk-tmpfs2
-            - /nextcloud-aio-talk-tmpfs3
-            - /nextcloud-aio-talk-tmpfs4
-          volumeMounts:
-            - name: nextcloud-aio-talk-tmpfs4
-              mountPath: /nextcloud-aio-talk-tmpfs4
-            - name: nextcloud-aio-talk-tmpfs3
-              mountPath: /nextcloud-aio-talk-tmpfs3
-            - name: nextcloud-aio-talk-tmpfs2
-              mountPath: /nextcloud-aio-talk-tmpfs2
-            - name: nextcloud-aio-talk-tmpfs1
-              mountPath: /nextcloud-aio-talk-tmpfs1
-            - name: nextcloud-aio-talk-tmpfs0
-              mountPath: /nextcloud-aio-talk-tmpfs0
+      securityContext:
+        # The items below only work in pod context
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
+        # The items below work in both contexts
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        {{- if eq (.Values.RPSS_ENABLED | default "no") "yes" }}
+        seccompProfile:
+          type: RuntimeDefault
+        {{- end }}
       containers:
         - env:
+            - name: TALK_MAX_STREAM_BITRATE
+              value: "{{ .Values.TALK_MAX_STREAM_BITRATE }}"
+            - name: TALK_MAX_SCREEN_BITRATE
+              value: "{{ .Values.TALK_MAX_SCREEN_BITRATE }}"
             - name: INTERNAL_SECRET
               value: "{{ .Values.TALK_INTERNAL_SECRET }}"
             - name: NC_DOMAIN
               value: "{{ .Values.NC_DOMAIN }}"
             - name: SIGNALING_SECRET
               value: "{{ .Values.SIGNALING_SECRET }}"
+            - name: TALK_HOST
+              value: nextcloud-aio-talk
             - name: TALK_PORT
               value: "{{ .Values.TALK_PORT }}"
             - name: TURN_SECRET
               value: "{{ .Values.TURN_SECRET }}"
             - name: TZ
               value: "{{ .Values.TIMEZONE }}"
-          image: nextcloud/aio-talk:20230817_065941-latest
+          image: nextcloud/aio-talk:20250122_091948
+          readinessProbe:
+            exec:
+              command:
+                - /healthcheck.sh
+            failureThreshold: 3
+            periodSeconds: 30
+            timeoutSeconds: 30
+          livenessProbe:
+            exec:
+              command:
+                - /healthcheck.sh
+            failureThreshold: 3
+            periodSeconds: 30
+            timeoutSeconds: 30
           name: nextcloud-aio-talk
           ports:
             - containerPort: {{ .Values.TALK_PORT }}
-              hostPort: {{ .Values.TALK_PORT }}
               protocol: TCP
             - containerPort: {{ .Values.TALK_PORT }}
-              hostPort: {{ .Values.TALK_PORT }}
               protocol: UDP
             - containerPort: 8081
-              hostPort: 8081
               protocol: TCP
           securityContext:
-            readOnlyRootFilesystem: true
-          volumeMounts:
-            - mountPath: /var/log/supervisord
-              name: nextcloud-aio-talk-tmpfs0
-            - mountPath: /var/run/supervisord
-              name: nextcloud-aio-talk-tmpfs1
-            - mountPath: /conf
-              name: nextcloud-aio-talk-tmpfs2
-            - mountPath: /var/lib/turn
-              name: nextcloud-aio-talk-tmpfs3
-            - mountPath: /tmp
-              name: nextcloud-aio-talk-tmpfs4
-      volumes:
-        - emptyDir: {}
-          name: nextcloud-aio-talk-tmpfs0
-        - emptyDir: {}
-          name: nextcloud-aio-talk-tmpfs1
-        - emptyDir: {}
-          name: nextcloud-aio-talk-tmpfs2
-        - emptyDir: {}
-          name: nextcloud-aio-talk-tmpfs3
-        - emptyDir: {}
-          name: nextcloud-aio-talk-tmpfs4
+            # The items below only work in container context
+            allowPrivilegeEscalation: false
+            capabilities:
+              {{- if eq (.Values.RPSS_ENABLED | default "no") "yes" }}
+              drop: ["ALL"]
+              {{- else }}
+              drop: ["NET_RAW"]
+              {{- end }}
 {{- end }}

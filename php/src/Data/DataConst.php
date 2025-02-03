@@ -23,6 +23,10 @@ class DataConst {
         return self::GetDataDirectory() . '/configuration.json';
     }
 
+    public static function GetBackupPublicKey() : string {
+        return self::GetDataDirectory() . '/id_borg.pub';
+    }
+
     public static function GetBackupSecretFile() : string {
         return self::GetDataDirectory() . '/backupsecret';
     }
@@ -49,5 +53,9 @@ class DataConst {
 
     public static function GetSessionDateFile() : string {
         return self::GetDataDirectory() . '/session_date_file';
+    }
+
+    public static function GetCommunityContainersDirectory() : string {
+        return realpath(__DIR__ . '/../../../community-containers/');
     }
 }

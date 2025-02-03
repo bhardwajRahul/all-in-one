@@ -47,7 +47,7 @@ elif ! sudo -u www-data test -r /var/run/docker.sock; then
     echo "Trying to fix docker.sock permissions internally..."
     DOCKER_GROUP=$(stat -c '%G' /var/run/docker.sock)
     DOCKER_GROUP_ID=$(stat -c '%g' /var/run/docker.sock)
-    # Check if a group with the same group id of /var/run/docker.socket already exists in the container
+    # Check if a group with the same group name of /var/run/docker.socket already exists in the container
     if grep -q "^$DOCKER_GROUP:" /etc/group; then
         # If yes, add www-data to that group
         echo "Adding internal www-data to group $DOCKER_GROUP"
@@ -70,12 +70,13 @@ fi
 # Check if api version is supported
 if ! sudo -u www-data docker info &>/dev/null; then
     print_red "Cannot connect to the docker socket. Cannot proceed."
+    echo "Did you maybe remove group read permissions for the docker socket? AIO needs them in order to access the docker socket."
     echo "If SELinux is enabled on your host, see https://github.com/nextcloud/all-in-one#are-there-known-problems-when-selinux-is-enabled"
     echo "If you are on TrueNas SCALE, see https://github.com/nextcloud/all-in-one#can-i-run-aio-on-truenas-scale"
     exit 1
 fi
 API_VERSION_FILE="$(find ./ -name DockerActionManager.php | head -1)"
-API_VERSION="$(grep -oP 'const API_VERSION.*\;' "$API_VERSION_FILE" | grep -oP '[0-9]+.[0-9]+' | head -1)"
+API_VERSION="$(grep -oP 'const string API_VERSION.*\;' "$API_VERSION_FILE" | grep -oP '[0-9]+.[0-9]+' | head -1)"
 # shellcheck disable=SC2001
 API_VERSION_NUMB="$(echo "$API_VERSION" | sed 's/\.//')"
 LOCAL_API_VERSION_NUMB="$(sudo -u www-data docker version | grep -i "api version" | grep -oP '[0-9]+.[0-9]+' | head -1 | sed 's/\.//')"
@@ -90,14 +91,21 @@ else
 fi
 
 # Check Storage drivers
-STORAGE_DRIVER="$(docker info | grep "Storage Driver")"
+STORAGE_DRIVER="$(sudo -u www-data docker info | grep "Storage Driver")"
 # Check if vfs is used: https://github.com/nextcloud/all-in-one/discussions/1467
 if echo "$STORAGE_DRIVER" | grep -q vfs; then
     echo "$STORAGE_DRIVER"
-    echo "Warning: It seems like the storage driver vfs is used. This will lead to problems with disk space and performance and is disrecommended!"
+    print_red "Warning: It seems like the storage driver vfs is used. This will lead to problems with disk space and performance and is disrecommended!"
 elif echo "$STORAGE_DRIVER" | grep -q fuse-overlayfs; then
     echo "$STORAGE_DRIVER"
-    echo "Warning: It seems like the storage driver fuse-overlayfs is used. Please check if you can switch to overlay2 instead."
+    print_red "Warning: It seems like the storage driver fuse-overlayfs is used. Please check if you can switch to overlay2 instead."
+fi
+
+# Check if snap install
+if sudo -u www-data docker info | grep "Docker Root Dir" | grep "/var/snap/docker/"; then
+    print_red "Warning: It looks like your installation uses docker installed via snap."
+    print_red "This comes with some limitations and is disrecommended by the docker maintainers."
+    print_red "See for example https://github.com/nextcloud/all-in-one/discussions/4890#discussioncomment-10386752"
 fi
 
 # Check if startup command was executed correctly
@@ -129,7 +137,7 @@ It is set to '$NEXTCLOUD_DATADIR'."
 fi
 if [ -n "$NEXTCLOUD_MOUNT" ]; then
     if ! echo "$NEXTCLOUD_MOUNT" | grep -q "^/" || [ "$NEXTCLOUD_MOUNT" = "/" ]; then
-        print_red "You've set NEXCLOUD_MOUNT but not to an allowed value.
+        print_red "You've set NEXTCLOUD_MOUNT but not to an allowed value.
 The string must start with '/' and must not be equal to '/'.
 It is set to '$NEXTCLOUD_MOUNT'."
         exit 1
@@ -179,9 +187,17 @@ It is set to '$APACHE_PORT'."
     fi
 fi
 if [ -n "$APACHE_IP_BINDING" ]; then
-    if ! echo "$APACHE_IP_BINDING" | grep -q '^[0-9.]\+$'; then
+    if ! echo "$APACHE_IP_BINDING" | grep -q '^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$\|^[0-9a-f:]\+$\|^@INTERNAL$'; then
         print_red "You provided an ip-address for the apache container's ip-binding but it was not a valid ip-address.
 It is set to '$APACHE_IP_BINDING'."
+        exit 1
+    fi
+fi
+if [ -n "$APACHE_ADDITIONAL_NETWORK" ]; then
+    if ! echo "$APACHE_ADDITIONAL_NETWORK" | grep -q "^[a-zA-Z0-9._-]\+$"; then
+        print_red "You've set APACHE_ADDITIONAL_NETWORK but not to an allowed value.
+It needs to be a string with letters, numbers, hyphens and underscores.
+It is set to '$APACHE_ADDITIONAL_NETWORK'."
         exit 1
     fi
 fi
@@ -241,6 +257,20 @@ It is set to '$NEXTCLOUD_ADDITIONAL_PHP_EXTENSIONS'."
         exit 1
     fi
 fi
+if [ -n "$AIO_COMMUNITY_CONTAINERS" ]; then
+    read -ra AIO_CCONTAINERS <<< "$AIO_COMMUNITY_CONTAINERS"
+    for container in "${AIO_CCONTAINERS[@]}"; do
+        if ! [ -d "/var/www/docker-aio/community-containers/$container" ]; then
+            print_red "The community container $container was not found!"
+            FAIL_CCONTAINERS=1
+        fi
+    done
+    if [ -n "$FAIL_CCONTAINERS" ]; then
+        print_red "You've set AIO_COMMUNITY_CONTAINERS but at least one container was not found.
+It is set to '$AIO_COMMUNITY_CONTAINERS'."
+        exit 1
+    fi
+fi
 
 # Check DNS resolution
 # Prevents issues like https://github.com/nextcloud/all-in-one/discussions/565
@@ -253,17 +283,29 @@ if [ "$?" = 6 ]; then
     exit 1
 fi
 
-# Check that no changes have been made to timezone settings since AIO only supports running in UTC timezone
+# Check if auth.docker.io is reachable
+# Solves issues like https://github.com/nextcloud/all-in-one/discussions/5268
+if ! curl https://auth.docker.io/token 2>&1 | grep -q token; then
+    print_red "Could not reach https://auth.docker.io."
+    echo "Most likely is something blocking access to it."
+    echo "You should be able to fix this by using https://github.com/nextcloud/all-in-one/tree/main/manual-install"
+    exit 1
+fi
+
+# Check that no changes have been made to timezone settings since AIO only supports running in Etc/UTC timezone
 if [ -n "$TZ" ]; then
-    print_red "The environmental variable TZ has been set which is not supported by AIO since it only supports running in the default UTC timezone!"
+    print_red "The environmental variable TZ has been set which is not supported by AIO since it only supports running in the default Etc/UTC timezone!"
+    echo "The correct timezone can be set in the AIO interface later on!"
+    # Disable exit since it seems to be by default set on unraid and we dont want to break these instances
+    # exit 1
+fi
+if mountpoint -q /etc/localtime; then
+    print_red "/etc/localtime has been mounted into the container which is not allowed because AIO only supports running in the default Etc/UTC timezone!"
     echo "The correct timezone can be set in the AIO interface later on!"
     exit 1
-elif mountpoint -q /etc/localtime; then
-    print_red "/etc/localtime has been mounted into the container which is not allowed because AIO only supports running in the default UTC timezone!"
-    echo "The correct timezone can be set in the AIO interface later on!"
-    exit 1
-elif mountpoint -q /etc/timezone; then
-    print_red "/etc/timezone has been mounted into the container which is not allowed because AIO only supports running in the default UTC timezone!"
+fi
+if mountpoint -q /etc/timezone; then
+    print_red "/etc/timezone has been mounted into the container which is not allowed because AIO only supports running in the default Etc/UTC timezone!"
     echo "The correct timezone can be set in the AIO interface later on!"
     exit 1
 fi
@@ -326,6 +368,7 @@ fi
 print_green "Initial startup of Nextcloud All-in-One complete!
 You should be able to open the Nextcloud AIO Interface now on port 8080 of this server!
 E.g. https://internal.ip.of.this.server:8080
+⚠️ Important: do always use an ip-address if you access this port and not a domain as HSTS might block access to it later!
 
 If your server has port 80 and 8443 open and you point a domain to your server, you can get a valid certificate automatically by opening the Nextcloud AIO Interface via:
 https://your-domain-that-points-to-this-server.tld:8443"

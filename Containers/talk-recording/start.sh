@@ -16,6 +16,9 @@ if [ -z "$HPB_DOMAIN" ]; then
     export HPB_DOMAIN="$NC_DOMAIN"
 fi
 
+# Delete all contents on startup to start fresh
+rm -fr /tmp/{*,.*}
+
 cat << RECORDING_CONF > "/conf/recording.conf"
 [logs]
 # 30 means Warning
@@ -26,7 +29,7 @@ listen = 0.0.0.0:1234
 
 [backend]
 allowall = ${ALLOW_ALL}
-# TODO: remove secret below when https://github.com/nextcloud/spreed/issues/9580 is fixed
+# The secret below is still needed if allowall is set to true, also it doesn't hurt to be here
 secret = ${RECORDING_SECRET}
 backends = backend-1
 skipverify = ${SKIP_VERIFY}
@@ -48,10 +51,14 @@ url = ${HPB_PROTOCOL}://${HPB_DOMAIN}${HPB_PATH}
 internalsecret = ${INTERNAL_SECRET}
 
 [ffmpeg]
+# common = ffmpeg -loglevel level+warning -n
 # outputaudio = -c:a libopus
 # outputvideo = -c:v libvpx -deadline:v realtime -crf 10 -b:v 1M
 extensionaudio = .ogg
 extensionvideo = .webm
+
+[recording]
+browser = firefox
 RECORDING_CONF
 
 exec "$@"
